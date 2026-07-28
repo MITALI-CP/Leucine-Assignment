@@ -48,7 +48,7 @@ Make sure the following are installed:
 Clone the repository:
 
 ```bash
-git clone <repository-link>
+git clone https://github.com/MITALI-CP/Leucine-Assignment.git
 ```
 
 Move into the project directory:
