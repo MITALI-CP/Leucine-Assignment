@@ -6,7 +6,7 @@ import numpy as np
 from google import genai
 from app.config import GEMINI_API_KEY
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
+model = None
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 
@@ -28,6 +28,11 @@ def generate_embeddings(chunks):
     """
     Generate embeddings for each text chunk.
     """
+    global model
+
+    if model is None:
+        model = SentenceTransformer("all-MiniLM-L6-v2")
+
     embeddings = model.encode(chunks)
 
     return embeddings.tolist()
