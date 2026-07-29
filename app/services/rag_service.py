@@ -1,12 +1,10 @@
 from app.database import db
 from datetime import datetime
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
+
 import numpy as np
 from google import genai
 from app.config import GEMINI_API_KEY
 
-model = None
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 
@@ -25,24 +23,30 @@ def chunk_text(text: str, chunk_size: int = 100):
 
 
 def generate_embeddings(chunks):
-    """
-    Generate embeddings for each text chunk.
-    """
-    global model
+    embeddings = []
 
-    if model is None:
-        model = SentenceTransformer("all-MiniLM-L6-v2")
+    for chunk in chunks:
+        response = client.models.embed_content(
+            model="gemini-embedding-001",
+            contents=chunk
+        )
 
-    embeddings = model.encode(chunks)
+        embeddings.append(response.embeddings[0].values)
 
-    return embeddings.tolist()
+    return embeddings
+
 
 def retrieve_relevant_chunk(question: str):
 
     chunks_collection = db["document_chunks"]
 
-    # Generate embedding for the user's question
-    question_embedding = model.encode([question])
+    # Generate embedding for user's question
+    response = client.models.embed_content(
+        model="gemini-embedding-001",
+        contents=question
+    )
+
+    question_embedding = np.array(response.embeddings[0].values)
 
     all_chunks = list(chunks_collection.find())
 
@@ -54,12 +58,12 @@ def retrieve_relevant_chunk(question: str):
 
     for chunk in all_chunks:
 
-        stored_embedding = np.array(chunk["embedding"]).reshape(1, -1)
+        stored_embedding = np.array(chunk["embedding"])
 
-        similarity = cosine_similarity(
-            question_embedding,
-            stored_embedding
-        )[0][0]
+        similarity = np.dot(question_embedding, stored_embedding) / (
+            np.linalg.norm(question_embedding)
+            * np.linalg.norm(stored_embedding)
+        )
 
         if similarity > highest_score:
             highest_score = similarity
@@ -73,7 +77,6 @@ def save_document(filename: str, content: str, user_email: str):
     documents = db["documents"]
     chunks_collection = db["document_chunks"]
 
-    # Store original document
     document = {
         "filename": filename,
         "content": content,
@@ -85,13 +88,10 @@ def save_document(filename: str, content: str, user_email: str):
 
     document_id = result.inserted_id
 
-    # Chunk text
     chunks = chunk_text(content)
 
-    # Generate embeddings
     embeddings = generate_embeddings(chunks)
 
-    # Store every chunk separately
     for i, chunk in enumerate(chunks):
         chunks_collection.insert_one({
             "document_id": document_id,
@@ -104,7 +104,8 @@ def save_document(filename: str, content: str, user_email: str):
         "message": "Document uploaded successfully",
         "document_id": str(document_id)
     }
-    
+
+
 def generate_answer(question: str):
 
     context = retrieve_relevant_chunk(question)
